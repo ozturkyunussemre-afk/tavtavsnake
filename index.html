@@ -1,0 +1,293 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Heart } from 'lucide-react';
+
+const SnakeGame = () => {
+  const canvasRef = useRef(null);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [score, setScore] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  
+  const gridSize = 20;
+  const tileCount = 20;
+  const canvasSize = gridSize * tileCount;
+  
+  const gameStateRef = useRef({
+    snake: [{ x: 10, y: 10 }],
+    food: { x: 15, y: 15 },
+    dx: 1,
+    dy: 0,
+    nextDx: 1,
+    nextDy: 0
+  });
+
+  const imageRef = useRef(null);
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const url = event.target.result;
+        setPreviewUrl(url);
+        
+        const img = new Image();
+        img.onload = () => {
+          imageRef.current = img;
+          setImageLoaded(true);
+          console.log('✅ Resim başarıyla yüklendi!', img.width, 'x', img.height);
+        };
+        img.src = url;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const startGame = () => {
+    console.log('🎮 Oyun başlıyor...');
+    gameStateRef.current = {
+      snake: [{ x: 10, y: 10 }],
+      food: { x: 15, y: 15 },
+      dx: 1,
+      dy: 0,
+      nextDx: 1,
+      nextDy: 0
+    };
+    setScore(0);
+    setGameOver(false);
+    setGameStarted(true);
+  };
+
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (!gameStarted || gameOver) return;
+      
+      const state = gameStateRef.current;
+      
+      if (e.key === 'ArrowUp' && state.dy === 0) {
+        state.nextDx = 0;
+        state.nextDy = -1;
+      } else if (e.key === 'ArrowDown' && state.dy === 0) {
+        state.nextDx = 0;
+        state.nextDy = 1;
+      } else if (e.key === 'ArrowLeft' && state.dx === 0) {
+        state.nextDx = -1;
+        state.nextDy = 0;
+      } else if (e.key === 'ArrowRight' && state.dx === 0) {
+        state.nextDx = 1;
+        state.nextDy = 0;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [gameStarted, gameOver]);
+
+  useEffect(() => {
+    if (!gameStarted || gameOver) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+
+    const gameLoop = setInterval(() => {
+      const state = gameStateRef.current;
+      
+      state.dx = state.nextDx;
+      state.dy = state.nextDy;
+
+      const head = { 
+        x: state.snake[0].x + state.dx, 
+        y: state.snake[0].y + state.dy 
+      };
+
+      if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount) {
+        setGameOver(true);
+        return;
+      }
+
+      for (let segment of state.snake) {
+        if (segment.x === head.x && segment.y === head.y) {
+          setGameOver(true);
+          return;
+        }
+      }
+
+      state.snake.unshift(head);
+
+      if (head.x === state.food.x && head.y === state.food.y) {
+        setScore(prev => prev + 10);
+        state.food = {
+          x: Math.floor(Math.random() * tileCount),
+          y: Math.floor(Math.random() * tileCount)
+        };
+      } else {
+        state.snake.pop();
+      }
+
+      // Clear canvas
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Draw grid
+      ctx.strokeStyle = '#ffffff11';
+      for (let i = 0; i <= tileCount; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * gridSize, 0);
+        ctx.lineTo(i * gridSize, canvasSize);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i * gridSize);
+        ctx.lineTo(canvasSize, i * gridSize);
+        ctx.stroke();
+      }
+
+      // Draw food
+      ctx.fillStyle = '#ff6b9d';
+      ctx.beginPath();
+      ctx.arc(
+        state.food.x * gridSize + gridSize / 2,
+        state.food.y * gridSize + gridSize / 2,
+        gridSize / 2 - 2,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+
+      // Draw snake
+      state.snake.forEach((segment, index) => {
+        const size = gridSize - 4;
+        const x = segment.x * gridSize + 2;
+        const y = segment.y * gridSize + 2;
+        const centerX = x + size / 2;
+        const centerY = y + size / 2;
+        const radius = size / 2;
+        
+        if (imageRef.current && imageLoaded) {
+          // Draw all segments with image
+          const img = imageRef.current;
+          const imgSize = Math.min(img.width, img.height);
+          const sx = (img.width - imgSize) / 2;
+          const sy = (img.height - imgSize) / 2;
+          
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+          ctx.clip();
+          ctx.drawImage(img, sx, sy, imgSize, imgSize, x, y, size, size);
+          ctx.restore();
+          
+          // Border (thicker for head)
+          ctx.strokeStyle = index === 0 ? '#00d9ff' : '#0fb9b1';
+          ctx.lineWidth = index === 0 ? 3 : 2;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          // Fallback if no image
+          ctx.fillStyle = index === 0 ? '#00d9ff' : '#0fb9b1';
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+    }, 120);
+
+    return () => clearInterval(gameLoop);
+  }, [gameStarted, gameOver, imageLoaded]);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-red-900 flex items-center justify-center p-4">
+      <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 shadow-2xl max-w-2xl w-full">
+        <div className="text-center mb-6">
+          <h1 className="text-4xl font-bold text-white mb-2 flex items-center justify-center gap-2">
+            <Heart className="text-pink-300" fill="currentColor" />
+            Sevgilim Yılan Oyunu
+            <Heart className="text-pink-300" fill="currentColor" />
+          </h1>
+          <p className="text-pink-200">Sevgilinin yüzü yılan kafası! 🐍💕</p>
+        </div>
+
+        {!previewUrl && (
+          <div className="mb-6 bg-white/20 rounded-xl p-6 text-center">
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+              <div className="bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-6 rounded-lg transition inline-block">
+                📸 Sevgilimin Fotoğrafını Yükle
+              </div>
+            </label>
+            <p className="text-pink-100 text-sm mt-2">Yılan kafası olarak kullanılacak</p>
+          </div>
+        )}
+
+        {previewUrl && !gameStarted && (
+          <div className="mb-6 text-center">
+            <img 
+              src={previewUrl} 
+              alt="Preview" 
+              className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-pink-300 object-cover" 
+            />
+            {imageLoaded ? (
+              <>
+                <button
+                  onClick={startGame}
+                  className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-8 rounded-lg text-xl transition shadow-lg"
+                >
+                  🎮 Oyunu Başlat
+                </button>
+                <p className="text-pink-200 text-sm mt-2">Hazır! Butona tıkla 🚀</p>
+              </>
+            ) : (
+              <p className="text-yellow-300 text-sm">Resim yükleniyor... ⏳</p>
+            )}
+          </div>
+        )}
+
+        {gameStarted && (
+          <>
+            <div className="text-center mb-4">
+              <span className="text-white text-2xl font-bold bg-white/20 px-6 py-2 rounded-full">
+                Skor: {score}
+              </span>
+            </div>
+
+            <div className="flex justify-center">
+              <canvas
+                ref={canvasRef}
+                width={canvasSize}
+                height={canvasSize}
+                className="border-4 border-pink-300 rounded-xl bg-gray-900 shadow-2xl"
+              />
+            </div>
+
+            <div className="text-center mt-4 text-pink-200 text-lg">
+              ⬆️ ⬇️ ⬅️ ➡️ Ok tuşlarıyla oyna
+            </div>
+          </>
+        )}
+
+        {gameOver && (
+          <div className="text-center mt-6 bg-white/20 rounded-xl p-6">
+            <h2 className="text-3xl font-bold text-white mb-2">Oyun Bitti!</h2>
+            <p className="text-pink-200 text-xl mb-4">Final Skoru: {score}</p>
+            <button
+              onClick={startGame}
+              className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg transition"
+            >
+              🔄 Tekrar Oyna
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default SnakeGame;
